@@ -1,0 +1,25 @@
+Aaron Dotter
+11/01/2013
+
+This directory contains the source code required to generate the color
+interpolation subroutines. These library source files are in src/, the
+makefile in make/, and a very simple test program in test/.
+
+To compile,
+
+./mk
+
+To clean up,
+
+./clean
+
+To run the test,
+
+./mk
+cd test
+make
+./color_test
+
+You should be prompted to input [Fe/H], logTeff, logg, and log(L/Lo).
+If it works properly, you will get back a list of absolute magnitudes
+in the Sloan (SDSS) filters.
