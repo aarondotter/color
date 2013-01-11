@@ -12,34 +12,31 @@ c the appropriate tables, and stores them in coltbl                      c
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       module castelli_kurucz
 
+      use color_def
+
       implicit none
       
       integer, parameter :: nz=9
-      integer, parameter :: nt=100, nfl=14, nmax=1000, kur_file=22,knc=90
+      integer, parameter :: nt=100, nfl=14, nmax=1000, kur_file=22
       double precision, parameter :: cln=dlog(1.0d1)
-      double precision :: z(nz),coltbl(knc,nmax,nz),teff(nz,nmax),ggl(nz,nmax)
-      integer :: itemp(nz,nt),itnum(nz),isize(nz),kcol(nfl),kncol,tintk=4,gintk=4,zintk=4
-      logical :: kur_initialized = .false., kur_debug = .false.
-      character(len=12) :: kur_filters(knc)
+      double precision :: z(nz),coltbl(maxct,maxnc,nmax,nz),teff(nz,nmax),ggl(nz,nmax)
+      integer :: itemp(nz,nt),itnum(nz),isize(nz),kcol(nfl),tintk=4,gintk=4,zintk=4
+      logical :: kur_debug = .false.
       character(len=128) :: kur_data_dir
 
       contains
 
-      subroutine kur_color_init(data_dir,afe,filter)
+      subroutine kur_color_init(data_dir,afe,nct)
       character(len=128) :: data_dir
       double precision, intent(in) :: afe
-      integer, intent(in) :: filter 
+      integer, intent(in) :: nct 
       integer :: iafe
 
       kur_data_dir = trim(data_dir) // '/kur/'
 
-      kcol(:) = (/10,10,13,12,17,77,5,5,7,4,5,4,6,6/)
-      z(:) = (/-4.0d0,-2.5d0,-2.0d0,-1.5d0,-1.0d0,-0.5d0,0.0d0,0.2d0,
-     *     0.5d0/)
+      z(:) = (/-4.0d0,-2.5d0,-2.0d0,-1.5d0,-1.0d0,-0.5d0,0.0d0,0.2d0,0.5d0/)
 
-      kncol = kcol(filter)
-
-c filter is an integer representing the choice of filter set
+c nct is an integer representing the choice of filter set
 c options include: (number of options is NFL)
 c     1. J-C UBVRI and 2MASS JHKs
 c     2. Washington + DDO51
@@ -64,9 +61,8 @@ c set [a/Fe] index parameter
       endif
 
 c read in the required tables for a range of [Fe/H] at fixed [a/Fe]    
-      call kur_color_read(iafe,filter)
+      call kur_color_read(iafe,nct)
 
-      kur_initialized = .true.
 c all set for interpolation in T_eff and log(g)
       end subroutine kur_color_init
 
@@ -74,9 +70,9 @@ c all set for interpolation in T_eff and log(g)
 ccccccccccccccccccccccccc subroutine kur_color_read ccccccccccccccccccccccc
 c reads in color tables based on specified Z, [a/Fe], filter set          c
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine kur_color_read(iafe,filter)
+      subroutine kur_color_read(iafe,nct)
 
-      integer :: iafe,filter,iz,j,ia,ierr
+      integer :: iafe,nct,iz,j,ia,ierr
       character(len=128) :: filename
       character(len=5) :: zfile(nz)
       character(len=3) :: afile(2)
@@ -88,8 +84,7 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
      >            'PanSTARRS  ', 'SPITZER    ', 'UKIDSS     ', 'WISE       ',
      >            'SkyMapper  ', 'LSST       '                              /)
       afile(:) = (/'ap0','ap4'/)
-      zfile(:) = (/'Zm4d0','Zm2d5','Zm2d0','Zm1d5',
-     *     'Zm1d0','Zm0d5','Zp0d0','Zp0d2','Zp0d5'/)
+      zfile(:) = (/'Zm4d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d2','Zp0d5'/)
 
       do iz=1,nz
 c set up filenames based on the input variables
@@ -99,17 +94,15 @@ c set up filenames based on the input variables
             ia=iafe
          endif
 
-         filename = trim(kur_data_dir) // zfile(iz) // afile(ia) // 
-     >        "." // trim(suffix(filter))
+         filename = trim(kur_data_dir) // zfile(iz) // afile(ia) // "." // trim(suffix(nct))
          if(kur_debug) write(0,*) filename
 c open table for reading
          open(kur_file,file=trim(filename),status='old')
-         read(kur_file,'(17x,99a12)') kur_filters(1:kncol)
+         read(kur_file,'(17x,99a12)',iostat=ierr) filter_name(nct,1:ncol(nct))
          read(kur_file,*) !skip header
 c read data in table
          do j=1,nmax
-            read(kur_file,*,iostat=ierr) 
-     *           teff(iz,j),ggl(iz,j),feh0,coltbl(1:kncol,j,iz)
+            read(kur_file,*,iostat=ierr) teff(iz,j),ggl(iz,j),feh0,coltbl(nct,1:ncol(nct),j,iz)
             if(ierr/=0) exit
             if(feh0/=z(iz)) write(0,*) 'WARNING table [Fe/H] incorrect'
          enddo
@@ -133,12 +126,12 @@ c itemp gives location of each T value in the teff-array
 ccccccccccccccccccccccc subroutine kur_color_interp ccccccccccccccccccccccc
 c     interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]      c
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine kur_color_interp(feh,tl0,gl0,color)
-
+      subroutine kur_color_interp(nct,feh,tl0,gl0,color)
+      integer, intent(in) :: nct
       double precision, intent(in) :: feh, tl0, gl0
-      double precision, intent(out) :: color(knc)
+      double precision, intent(out) :: color(maxnc)
       integer :: i,j,k,iii,jj,inewt,inewg,iz,izlo,izhi
-      double precision :: fg(4),ft(4),tl,gl,t,qt(4),qg(4),colr(nz,knc),col(nz,knc,4),fz(4)
+      double precision :: fg(4),ft(4),tl,gl,t,qt(4),qg(4),colr(nz,maxnc),col(nz,maxnc,4),fz(4)
       double precision :: feh0
 
       iz=0
@@ -164,7 +157,7 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       izlo=iz+1-zintk/2
       izhi=iz+zintk/2
-      call kur_interp(z(izlo:izhi),fz,feh0,4)
+      call interp(z(izlo:izhi),fz,feh0,4)
 
       do iii=izlo,izhi
 c     locate T in the Teff array
@@ -181,7 +174,7 @@ c     find interpolation coeff.'s in T
          do i=1,tintk
             qt(i)=teff(iii,itemp(iii,inewt+i-tintk/2))
          enddo
-         call kur_interp(qt,ft,t,tintk)
+         call interp(qt,ft,t,tintk)
 
          if(kur_debug)then
             print *, 'Teff, logg, [Fe/H]=', t, gl, feh
@@ -205,20 +198,20 @@ c     find interpolation coefficients in Log G
             do k=1,gintk
                qg(k)=ggl(iii,inewg+k-gintk/2)
             enddo
-            call kur_interp(qg,fg,gl,gintk)
+            call interp(qg,fg,gl,gintk)
 
 c     g-interpolation
-            do k=1,kncol
+            do k=1,ncol(nct)
                col(iii,k,j)=0.0d0
                do i=1,gintk
                   col(iii,k,j) = col(iii,k,j) + 
-     *                 fg(i)*coltbl(k,inewg+i-gintk/2,iii)
+     *                 fg(i)*coltbl(nct,k,inewg+i-gintk/2,iii)
                enddo            !i-loop
             enddo               !k-loop
          enddo                  !j-loop
          
 c     T-interpolation
-         do i=1,kncol
+         do i=1,ncol(nct)
             colr(iii,i)=0.0d0
             do j=1,tintk
                colr(iii,i)=colr(iii,i)+ft(j)*col(iii,i,j)
@@ -227,7 +220,7 @@ c     T-interpolation
       enddo                     !iii-loop
       
 c     Z-interpolation
-      do i=1,kncol
+      do i=1,ncol(nct)
          color(i)=0.0d0
          do j=1,zintk
             color(i)=color(i)+fz(j)*colr(iz-zintk/2+j,i)
@@ -235,28 +228,6 @@ c     Z-interpolation
       enddo
 
       end subroutine kur_color_interp
-
-C******************************************************************************
-C               N-PT. Lagrangian Interpolation Coefficients
-C******************************************************************************
-      subroutine kur_interp(a,b,x,n)
-c {a} are the tabulated values for use in interpolation
-c {b} are coefficients of the interpolating polynomial
-c  x  is the abscissa to be interpolated
-c  n  is the number of points to be used, 
-c     the interpolating polynomial has order n-1 
-      integer, intent(in) :: n
-      double precision, intent(in) :: a(n), x
-      double precision, intent(out) :: b(n)
-      integer :: i,j
-      do i=1,n
-         b(i)=1.0d0
-         do j=1,n
-            if(j.ne.i) b(i)=b(i)*(x-a(j))/(a(i)-a(j))
-         enddo
-      enddo
-
-      end subroutine kur_interp
 
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c                           END of KUR_COLOR.F                           c
