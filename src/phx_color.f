@@ -15,17 +15,18 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       use color_def
 
       implicit none
-      
+
+      private
       integer, parameter :: nz_max=10
       integer, parameter :: nt=66, nfl=14, nmax=1000, phx_file=21
       double precision, parameter :: cln = dlog(1.0d1)
       double precision :: z(nz_max),coltbl(maxct,maxnc,nmax,nz_max)
       double precision :: teff(nz_max,nmax),ggl(nz_max,nmax)
-      integer :: itemp(nz_max,nt),itnum(nz_max),isize(nz_max),pcol(nfl)
-      integer :: nz,tintp=4,gintp=4,zintp=4
-      logical :: phx_debug = .false.
+      integer :: itemp(nz_max,nt),itnum(nz_max),isize(nz_max),pcol(nfl),nz
+      logical :: phx_debug = .true.
       character(len=128) :: phx_data_dir
 
+      public :: phx_color_init, phx_color_interp
 
       contains
 
@@ -79,6 +80,7 @@ c read in the required tables for a range of [Fe/H] at fixed [a/Fe]
 c all set for interpolation in T_eff and log(g)      
       end subroutine phx_color_init
 
+
 ccccccccccccccccccccccccc subroutine phx_color_read ccccccccccccccccccccccc
 c reads in color tables based on specified Z, [a/Fe], filter set          c
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -109,6 +111,7 @@ c set up filenames based on the input variables
          if(phx_debug) write(0,*) trim(filename)
 c open table for reading
          open(phx_file,file=trim(filename),status='old')
+         read(phx_file,*) !skip header
          read(phx_file,'(17x,99a12)',iostat=ierr) filter_name(nct,1:ncol(nct))
          read(phx_file,*,iostat=ierr) !skip this line
 c read data in table
@@ -135,13 +138,102 @@ c itemp gives location of each T value in the teff-array
       end subroutine phx_color_read
 
 ccccccccccccccccccccccc subroutine phx_color_interp ccccccccccccccccccccc
-c     interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
+c NEW:interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      subroutine phx_color_interp_new(nct,feh,tl0,gl0,color)
+      integer, intent(in) :: nct
+      double precision, intent(in) :: feh, tl0, gl0
+      double precision, intent(out) :: color(maxnc)
+      integer :: i,j,iz,izlo,izhi,zintp
+      double precision :: tl,gl,t,colr(nz_max,maxnc),fz(4),feh0
+      !for QSHEP2D:
+      integer, parameter :: nq=13, nw=19, nr=15
+      !integer, parameter :: nq=6, nw=10, nr=5
+      integer :: lcell(nr,nr), lnext(nmax), ierr
+      double precision :: xmin, ymin, dx, dy, rmax, rsq(nmax), a(5,nmax)
+      double precision :: qs2val
+
+      iz=0
+      tl=tl0
+      gl=gl0
+      t=dexp(cln*tl)
+      colr=0d0
+      zintp=4
+
+      feh0 = min(feh,z(nz)-1d-3)
+      if(phx_debug) write(0,*) 'phx: ', feh, feh0, z(nz)
+
+
+      ![Fe/H] interpolation
+      do i=1,nz-1
+         if( feh0>=z(i) .and. feh0<z(i+1) ) iz=i
+      enddo
+      if(iz<zintp/2) iz=zintp/2
+      if(iz>nz-zintp/2) iz=nz-zintp/2
+
+      izlo=iz+1-zintp/2
+      izhi=iz+zintp/2
+      call interp(z(izlo:izhi),fz,feh0,zintp)
+
+      !Teff and logg interpolation for each [Fe/H]
+      do i=izlo,izhi      
+         do j=1,ncol(nct)
+            call qshep2( isize(i), teff(i,:), ggl(i,:), coltbl(nct,j,:,i), 
+     >           nq, nw, nr, lcell, lnext, xmin, ymin, dx, dy, rmax, rsq, a, ierr)
+            colr(i,j) = qs2val(t, gl, isize(i), teff(i,:), ggl(i,:), 
+     >           coltbl(nct,j,:,i), nr, lcell, lnext, xmin, ymin, dx, dy,
+     >           rmax, rsq, a)
+         enddo
+      enddo
+
+!     Final [Fe/H]-interpolation
+      do i=1,ncol(nct)
+         color(i)=0.0d0
+         do j=1,zintp
+            color(i)=color(i)+fz(j)*colr(iz-zintp/2+j,i)
+         enddo
+      enddo
+
+      if(phx_debug)then
+         do i=1,ncol(nct)
+            write(*,'(a20,i3,5f12.6)') 'i, color(i)=', i, color(i), colr(izlo:izhi,i)
+         enddo
+      endif
+
+      end subroutine phx_color_interp_new
+
+ccccccccccccccccccccccc subroutine phx_color_interp ccccccccccccccccccccc
+c            wrapper for old and new interpolation routines             c
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine phx_color_interp(nct,feh,tl0,gl0,color)
       integer, intent(in) :: nct
       double precision, intent(in) :: feh, tl0, gl0
       double precision, intent(out) :: color(maxnc)
-      integer :: i,j,k,iii,jj,inewt,inewg,iz,izlo,izhi
+      double precision :: color_new(maxnc), color_old(maxnc), color_diff(maxnc)
+ 1    format(1p99e12.4)
+
+      call phx_color_interp_new(nct,feh,tl0,gl0,color_new)
+
+      if(phx_debug)then
+         call phx_color_interp_old(nct,feh,tl0,gl0,color_old)
+         color_diff = color_new - color_old
+         write(*,1) color_new(1:ncol(nct))
+         write(*,1) color_old(1:ncol(nct))
+         write(*,1) color_diff(1:ncol(nct))
+      endif
+
+      color = color_new
+      end subroutine phx_color_interp
+
+
+ccccccccccccccccccccccc subroutine phx_color_interp ccccccccccccccccccccc
+c OLD:interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      subroutine phx_color_interp_old(nct,feh,tl0,gl0,color)
+      integer, intent(in) :: nct
+      double precision, intent(in) :: feh, tl0, gl0
+      double precision, intent(out) :: color(maxnc)
+      integer :: i,j,k,iii,jj,inewt,inewg,iz,izlo,izhi,tintp,gintp,zintp
       double precision :: fg(4),ft(4),tl,gl,t,qt(4),qg(4),colr(nz_max,maxnc),col(nz_max,maxnc,4),fz(4)
       double precision :: feh0
 
@@ -149,17 +241,17 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       tl=tl0
       gl=gl0
       t=dexp(cln*tl)
+      colr=0d0
       if(gl>=5.5d0) gl=5.4999d0
       !if(gl<=0d0) gl=0d0
       inewt=0
       inewg=0
-
       tintp=4
       gintp=4
+      zintp=4
 
       feh0 = min(feh,z(nz)-1d-3)
       if(phx_debug) write(0,*) 'phx: ', feh, feh0, z(nz)
-
 
 c     [Fe/H] interpolation
       do i=1,nz-1
@@ -170,7 +262,7 @@ c     [Fe/H] interpolation
 
       izlo=iz+1-zintp/2
       izhi=iz+zintp/2
-      call interp(z(izlo:izhi),fz,feh0,4)
+      call interp(z(izlo:izhi),fz,feh0,zintp)
 
       do iii=izlo,izhi
 c     locate T in the Teff array (default is linear interpolation in T)
@@ -253,7 +345,7 @@ c     Z-interpolation
          enddo
       endif
 
-      end subroutine phx_color_interp
+      end subroutine phx_color_interp_old
 
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c                           END of PHX_COLOR.F                          c

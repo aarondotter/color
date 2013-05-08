@@ -16,13 +16,16 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       implicit none
       
+      private
       integer, parameter :: nz=9
       integer, parameter :: nt=100, nfl=14, nmax=1000, kur_file=22
       double precision, parameter :: cln=dlog(1.0d1)
       double precision :: z(nz),coltbl(maxct,maxnc,nmax,nz),teff(nz,nmax),ggl(nz,nmax)
-      integer :: itemp(nz,nt),itnum(nz),isize(nz),kcol(nfl),tintk=4,gintk=4,zintk=4
+      integer :: itemp(nz,nt),itnum(nz),isize(nz),kcol(nfl)
       logical :: kur_debug = .false.
       character(len=128) :: kur_data_dir
+
+      public :: kur_color_init, kur_color_interp
 
       contains
 
@@ -98,6 +101,7 @@ c set up filenames based on the input variables
          if(kur_debug) write(0,*) filename
 c open table for reading
          open(kur_file,file=trim(filename),status='old')
+         read(kur_file,*) !skip header
          read(kur_file,'(17x,99a12)',iostat=ierr) filter_name(nct,1:ncol(nct))
          read(kur_file,*) !skip header
 c read data in table
@@ -123,14 +127,103 @@ c itemp gives location of each T value in the teff-array
 
       end subroutine kur_color_read
 
-ccccccccccccccccccccccc subroutine kur_color_interp ccccccccccccccccccccccc
-c     interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]      c
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccc subroutine kur_color_interp ccccccccccccccccccccc
+c            wrapper for old and new interpolation routines             c
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine kur_color_interp(nct,feh,tl0,gl0,color)
       integer, intent(in) :: nct
       double precision, intent(in) :: feh, tl0, gl0
       double precision, intent(out) :: color(maxnc)
-      integer :: i,j,k,iii,jj,inewt,inewg,iz,izlo,izhi
+      double precision :: color_new(maxnc), color_old(maxnc), color_diff(maxnc)
+ 1    format(1p99e12.4)
+      
+      call kur_color_interp_new(nct,feh,tl0,gl0,color_new)
+
+      if(kur_debug)then
+         call kur_color_interp_old(nct,feh,tl0,gl0,color_old)
+         color_diff = color_new - color_old         
+         write(*,1) color_new(1:ncol(nct))
+         write(*,1) color_old(1:ncol(nct))
+         write(*,1) color_diff(1:ncol(nct))
+      endif
+
+      color = color_new
+      end subroutine kur_color_interp
+
+
+ccccccccccccccccccccccc subroutine kur_color_interp ccccccccccccccccccccc
+c NEW:interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      subroutine kur_color_interp_new(nct,feh,tl0,gl0,color)
+      integer, intent(in) :: nct
+      double precision, intent(in) :: feh, tl0, gl0
+      double precision, intent(out) :: color(maxnc)
+      integer :: i,j,iz,izlo,izhi,zintk
+      double precision :: tl,gl,t,colr(nz,maxnc),fz(4),feh0
+      !for QSHEP2D:
+      integer, parameter :: nq=13, nw=19, nr=15
+      !integer, parameter :: nq=6, nw=10, nr=5
+      integer :: lcell(nr,nr), lnext(nmax), ierr
+      double precision :: xmin, ymin, dx, dy, rmax, rsq(nmax), a(5,nmax)
+      double precision :: qs2val
+
+      iz=0
+      tl=tl0
+      gl=gl0
+      t=dexp(cln*tl)
+      colr=0d0
+      zintk=4
+
+      feh0 = min(feh,z(nz)-1d-3)
+      if(kur_debug) write(0,*) 'kur: ', feh, feh0, z(nz)
+
+
+      ![Fe/H] interpolation
+      do i=1,nz-1
+         if( feh0>=z(i) .and. feh0<z(i+1) ) iz=i
+      enddo
+      if(iz<zintk/2) iz=zintk/2
+      if(iz>nz-zintk/2) iz=nz-zintk/2
+
+      izlo=iz+1-zintk/2
+      izhi=iz+zintk/2
+      call interp(z(izlo:izhi),fz,feh0,zintk)
+
+      !Teff and logg interpolation for each [Fe/H]
+      do i=izlo,izhi      
+         do j=1,ncol(nct)
+            call qshep2( isize(i), teff(i,:), ggl(i,:), coltbl(nct,j,:,i), 
+     >           nq, nw, nr, lcell, lnext, xmin, ymin, dx, dy, rmax, rsq, a, ierr)
+            colr(i,j) = qs2val(t, gl, isize(i), teff(i,:), ggl(i,:), 
+     >           coltbl(nct,j,:,i), nr, lcell, lnext, xmin, ymin, dx, dy,
+     >           rmax, rsq, a)
+         enddo
+      enddo
+
+!     Final [Fe/H]-interpolation
+      do i=1,ncol(nct)
+         color(i)=0.0d0
+         do j=1,zintk
+            color(i)=color(i)+fz(j)*colr(iz-zintk/2+j,i)
+         enddo
+      enddo
+
+      if(kur_debug)then
+         do i=1,ncol(nct)
+            write(*,'(a20,i3,5f12.6)') 'i, color(i)=', i, color(i), colr(izlo:izhi,i)
+         enddo
+      endif
+
+      end subroutine kur_color_interp_new
+
+ccccccccccccccccccccccc subroutine kur_color_interp ccccccccccccccccccccccc
+c     interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]      c
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      subroutine kur_color_interp_old(nct,feh,tl0,gl0,color)
+      integer, intent(in) :: nct
+      double precision, intent(in) :: feh, tl0, gl0
+      double precision, intent(out) :: color(maxnc)
+      integer :: i,j,k,iii,jj,inewt,inewg,iz,izlo,izhi,tintk,gintk,zintk
       double precision :: fg(4),ft(4),tl,gl,t,qt(4),qg(4),colr(nz,maxnc),col(nz,maxnc,4),fz(4)
       double precision :: feh0
 
@@ -145,6 +238,7 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       inewg=0
       tintk=4
       gintk=4
+      zintk=4
 
       feh0 = min(feh,z(nz)-1d-3)
       if(kur_debug) write(0,*) 'kur: ', feh, feh0, z(nz)
@@ -157,7 +251,7 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       izlo=iz+1-zintk/2
       izhi=iz+zintk/2
-      call interp(z(izlo:izhi),fz,feh0,4)
+      call interp(z(izlo:izhi),fz,feh0,zintk)
 
       do iii=izlo,izhi
 c     locate T in the Teff array
@@ -227,7 +321,7 @@ c     Z-interpolation
          enddo
       enddo
 
-      end subroutine kur_color_interp
+      end subroutine kur_color_interp_old
 
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c                           END of KUR_COLOR.F                           c

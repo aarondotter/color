@@ -18,8 +18,6 @@
       contains
 
       subroutine interactive
-
-
             
       logT=99d0
       do while(logT > 0d0)

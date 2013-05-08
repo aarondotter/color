@@ -43,8 +43,11 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       double precision :: color(maxnc),clr1(maxnc),Fhi,Flo,mbol
       double precision :: colorp(maxnc),colork(maxnc),clr2(maxnc)
                      ! alternatively tlo=3.95d0, thi=3.97d0
-      double precision, parameter :: tlo=3.87d0, thi=3.93d0
+      double precision, parameter :: tlo=3.90d0, thi=3.93d0
       integer :: j
+      double precision :: my_alpha_Fe
+
+      my_alpha_Fe = afe
 
       if(.not.colors_initialized(nct)) stop 'get_mags: need to call color_init'
       !'

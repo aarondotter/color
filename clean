@@ -1,2 +1,3 @@
 rm -f *~ src/*~ test/*~;
 cd make; make clean
+cd ../test; make clean
