@@ -1,7 +1,7 @@
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c                                 ALL_COLOR.F                              c
-c Serves as a holding place for code related to Teff-Color transformations c
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+!ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+!                                 ALL_COLOR.F                              c
+! Serves as a holding place for code related to Teff-Color transformations c
+!ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       module color_lib
 
       use color_def
@@ -9,8 +9,6 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       use castelli_kurucz
 
       implicit none
-
-      double precision :: vegamag(10) !for Vega zeropoints
 
       contains
 
@@ -21,21 +19,27 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       if(colors_initialized(nct)) return
 
-      ncol = (/10,10,13,12,17,77,5,5,7,4,5,4,6,6/)
+      ncol = [10,10,13,12,17,77,5,5,7,4,5,4,6,6]
 
+      suffix = [ 'UBVRIJHKsKp', 'WashDDOuvby', 'HST_WFPC2  ', 'HST_ACSWF  ',
+     >            'HST_ACSHR  ', 'HST_WFC3   ', 'CFHTugriz  ', 'SDSSugriz  ',
+     >            'PanSTARRS  ', 'SPITZER    ', 'UKIDSS     ', 'WISE       ',
+     >            'SkyMapper  ', 'LSST       '                              ]
+      
+      !initialize sub-modules'
       call phx_color_init(data_dir, afe, nct)
       call kur_color_init(data_dir, afe, nct)
 
 !     from Bessell, Castelli, & Plez 1998 (BCP98) for Vega:
 !     V     U-B    B-V    V-R    V-I
 !     0.03 -0.004 -0.002 -0.007 -0.003
-!                  U       B       V     R       I       
-      vegamag = (/ 2.6d-2, 2.8d-2, 3d-2, 3.7d-2, 3.3d-2, 0d0, 0d0, 0d0, 0d0, 0d0 /)
+!                  U       B       V     R       I      J     H    Ks   Kp  D51 
+      vegamag = [ 2.6d-2, 2.8d-2, 3d-2, 3.7d-2, 3.3d-2, 0d0, 0d0, 0d0, 0d0, 0d0 ]
 
       colors_initialized(nct) = .true.
       end subroutine color_init
      
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine get_mags(nct,feh,afe,logL,grav,teff,filter)
       integer, intent(in) :: nct
       double precision, intent(in) :: feh, afe, logL, grav, teff
@@ -56,10 +60,10 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 !***************************
 !for PHOENIX + Castelli & Kurucz synthetic
 !***************************
-c  smooth out bumps due to PHOENIX - Kurucz transition by applying two
-c  adjustments: first, ramp between PHX and C&K between TLO and THI
-c  and second, apply an offset to all mags calculated at THI for all
-c  mags above THI
+!  smooth out bumps due to PHOENIX - Kurucz transition by applying two
+!  adjustments: first, ramp between PHX and C&K between TLO and THI
+!  and second, apply an offset to all mags calculated at THI for all
+!  mags above THI
       if(teff>=tlo)then
          call phx_color_interp(nct,feh,tlo,grav,colorp)
          call kur_color_interp(nct,feh,tlo,grav,colork)
@@ -72,28 +76,28 @@ c  mags above THI
             clr2(j)=colork(j)-colorp(j)
          enddo
       endif
-c actual Teff and log g for each point are found here
+! actual Teff and log g for each point are found here
       if(teff<=thi) call phx_color_interp(nct,feh,teff,grav,colorp)
       if(teff>=tlo) call kur_color_interp(nct,feh,teff,grav,colork)
 
-c phoenix colors only go up to 10,000 K, so ramp between PHX and KUR
-c for high temperatures, the ramp is achieved with Flo and Fhi:
+! phoenix colors only go up to 10,000 K, so ramp between PHX and KUR
+! for high temperatures, the ramp is achieved with Flo and Fhi:
       Flo=(thi-teff)/(thi-tlo)  !goes from 1 at tlo to 0 at thi
       Flo = 0.5d0*(1d0-cos(pi*Flo)) !smoothe the edges, a la Bill Paxton
       Fhi = 1.0d0-Flo           !goes from 0 at tlo to 1 at thi
 
       do j=1,ncol(nct)          !loop through colors
          if(teff<tlo) then
-c use only PHX colors below TLO
+! use only PHX colors below TLO
             color(j)=colorp(j)
          elseif(teff>=tlo.and.teff<=thi) then
-c in this transitional region, the color is made up of 3 pieces:
-c     #1-PHX ramping down from 1 at TLO to 0 at THI
-c     #2-C&K ramping  up  from 0 at TLO to 1 at THI
-c     #3-offset between PHX and C&K
+! in this transitional region, the color is made up of 3 pieces:
+!     #1-PHX ramping down from 1 at TLO to 0 at THI
+!     #2-C&K ramping  up  from 0 at TLO to 1 at THI
+!     #3-offset between PHX and C&K
             color(j)=Flo*colorp(j) + Fhi*(colork(j)-Flo*clr1(j)-Fhi*clr2(j))
          elseif(teff>thi)then
-c use only C&K colors above THI but include offset as found at THI for continuity
+! use only C&K colors above THI but include offset as found at THI for continuity
             color(j) = colork(j) - clr2(j) 
          endif
       enddo
@@ -107,7 +111,4 @@ c use only C&K colors above THI but include offset as found at THI for continuit
 
       end subroutine get_mags
 
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c                       END OF ALL_COLOR FILE                             c
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       end module color_lib

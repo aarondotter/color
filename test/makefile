@@ -17,5 +17,8 @@ TEST=color_test
 $(TEST): color_test.f $(COLOR_LIB_DIR)/$(LIB)
 	$(COMPILE) -o $(TEST) color_test.f $(LOAD_COLOR) $(INCLUDE_COLOR)
 
+check: $(TEST)
+	./$(TEST) < test_string
+
 clean:
 	rm -f $(TEST) *~ *.o *.mod *genmod.f90 $(LIB)

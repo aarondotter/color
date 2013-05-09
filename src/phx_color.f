@@ -23,7 +23,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       double precision :: z(nz_max),coltbl(maxct,maxnc,nmax,nz_max)
       double precision :: teff(nz_max,nmax),ggl(nz_max,nmax)
       integer :: itemp(nz_max,nt),itnum(nz_max),isize(nz_max),pcol(nfl),nz
-      logical :: phx_debug = .true.
+      logical :: phx_debug = .false.
       character(len=128) :: phx_data_dir
 
       public :: phx_color_init, phx_color_interp
@@ -46,33 +46,16 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
          nz=10
       endif
 
-! nct is an integer representing the choice of filter set
-! options include:
-!     1. Bessell UBV(RI)c + 2MASS JHKs + Kepler Kp and D51
-!     2. Washington + DDO51 + Stromgren
-!     3. HST-WFPC2
-!     4. HST-ACS WFC
-!     5. HST-ACS HRC
-!     6. HST-WFC3 UVIS+IR
-!     7. CFHT ugriz
-!     8. SDSS ugriz
-!     9. PanSTARRS
-!    10. Spitzer IRAC
-!    11. UKIDSS
-!    12. WISE
-!    13. SkyMapper
-!    14. LSST
-
 ! set [a/Fe] index parameter
       iafe=0
-      if(afe.eq.-0.2d0) iafe=1
-      if(afe.eq. 0.0d0) iafe=2
-      if(afe.eq. 0.2d0) iafe=3
-      if(afe.eq. 0.4d0) iafe=4
-      if(afe.eq. 0.6d0) iafe=5
-      if(afe.eq. 0.8d0) iafe=6
+      if(afe==-0.2d0) iafe=1
+      if(afe== 0.0d0) iafe=2
+      if(afe== 0.2d0) iafe=3
+      if(afe== 0.4d0) iafe=4
+      if(afe== 0.6d0) iafe=5
+      if(afe== 0.8d0) iafe=6
       !if(feh<=-2.5d0) iafe=2
-      if(iafe.eq.0) stop "PROBLEM WITH [a/Fe] IN ISOCHRONE FILE"
+      if(iafe==0) stop "PROBLEM WITH [a/Fe] IN ISOCHRONE FILE"
 
 c read in the required tables for a range of [Fe/H] at fixed [a/Fe]    
       call phx_color_read(iafe,nct)
@@ -91,14 +74,9 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       character(len=128) :: filename
       character(len=5) :: zfile(nz_max)
       character(len=3) :: afile(6)
-      character(len=11) :: suffix(nfl)
 
-      suffix = (/ 'UBVRIJHKsKp', 'WashDDOuvby', 'HST_WFPC2  ', 'HST_ACSWF  ',
-     >            'HST_ACSHR  ', 'HST_WFC3   ', 'CFHTugriz  ', 'SDSSugriz  ',
-     >            'PanSTARRS  ', 'SPITZER    ', 'UKIDSS     ', 'WISE       ',
-     >            'SkyMapper  ', 'LSST       '                              /)
-      afile(:) = (/'am2','ap0','ap2','ap4','ap6','ap8'/)
-      zfile(:) = (/'Zm4d0','Zm3d5','Zm3d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d5'/)
+      afile = (/'am2','ap0','ap2','ap4','ap6','ap8'/)
+      zfile = (/'Zm4d0','Zm3d5','Zm3d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d5'/)
 
       do iz=1,nz
 c set up filenames based on the input variables
@@ -138,98 +116,9 @@ c itemp gives location of each T value in the teff-array
       end subroutine phx_color_read
 
 ccccccccccccccccccccccc subroutine phx_color_interp ccccccccccccccccccccc
-c NEW:interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine phx_color_interp_new(nct,feh,tl0,gl0,color)
-      integer, intent(in) :: nct
-      double precision, intent(in) :: feh, tl0, gl0
-      double precision, intent(out) :: color(maxnc)
-      integer :: i,j,iz,izlo,izhi,zintp
-      double precision :: tl,gl,t,colr(nz_max,maxnc),fz(4),feh0
-      !for QSHEP2D:
-      integer, parameter :: nq=13, nw=19, nr=15
-      !integer, parameter :: nq=6, nw=10, nr=5
-      integer :: lcell(nr,nr), lnext(nmax), ierr
-      double precision :: xmin, ymin, dx, dy, rmax, rsq(nmax), a(5,nmax)
-      double precision :: qs2val
-
-      iz=0
-      tl=tl0
-      gl=gl0
-      t=dexp(cln*tl)
-      colr=0d0
-      zintp=4
-
-      feh0 = min(feh,z(nz)-1d-3)
-      if(phx_debug) write(0,*) 'phx: ', feh, feh0, z(nz)
-
-
-      ![Fe/H] interpolation
-      do i=1,nz-1
-         if( feh0>=z(i) .and. feh0<z(i+1) ) iz=i
-      enddo
-      if(iz<zintp/2) iz=zintp/2
-      if(iz>nz-zintp/2) iz=nz-zintp/2
-
-      izlo=iz+1-zintp/2
-      izhi=iz+zintp/2
-      call interp(z(izlo:izhi),fz,feh0,zintp)
-
-      !Teff and logg interpolation for each [Fe/H]
-      do i=izlo,izhi      
-         do j=1,ncol(nct)
-            call qshep2( isize(i), teff(i,:), ggl(i,:), coltbl(nct,j,:,i), 
-     >           nq, nw, nr, lcell, lnext, xmin, ymin, dx, dy, rmax, rsq, a, ierr)
-            colr(i,j) = qs2val(t, gl, isize(i), teff(i,:), ggl(i,:), 
-     >           coltbl(nct,j,:,i), nr, lcell, lnext, xmin, ymin, dx, dy,
-     >           rmax, rsq, a)
-         enddo
-      enddo
-
-!     Final [Fe/H]-interpolation
-      do i=1,ncol(nct)
-         color(i)=0.0d0
-         do j=1,zintp
-            color(i)=color(i)+fz(j)*colr(iz-zintp/2+j,i)
-         enddo
-      enddo
-
-      if(phx_debug)then
-         do i=1,ncol(nct)
-            write(*,'(a20,i3,5f12.6)') 'i, color(i)=', i, color(i), colr(izlo:izhi,i)
-         enddo
-      endif
-
-      end subroutine phx_color_interp_new
-
-ccccccccccccccccccccccc subroutine phx_color_interp ccccccccccccccccccccc
-c            wrapper for old and new interpolation routines             c
+c     interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine phx_color_interp(nct,feh,tl0,gl0,color)
-      integer, intent(in) :: nct
-      double precision, intent(in) :: feh, tl0, gl0
-      double precision, intent(out) :: color(maxnc)
-      double precision :: color_new(maxnc), color_old(maxnc), color_diff(maxnc)
- 1    format(1p99e12.4)
-
-      call phx_color_interp_new(nct,feh,tl0,gl0,color_new)
-
-      if(phx_debug)then
-         call phx_color_interp_old(nct,feh,tl0,gl0,color_old)
-         color_diff = color_new - color_old
-         write(*,1) color_new(1:ncol(nct))
-         write(*,1) color_old(1:ncol(nct))
-         write(*,1) color_diff(1:ncol(nct))
-      endif
-
-      color = color_new
-      end subroutine phx_color_interp
-
-
-ccccccccccccccccccccccc subroutine phx_color_interp ccccccccccccccccccccc
-c OLD:interpolates the mags and colors based on T, g, [Fe/H], [a/Fe]    c
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine phx_color_interp_old(nct,feh,tl0,gl0,color)
       integer, intent(in) :: nct
       double precision, intent(in) :: feh, tl0, gl0
       double precision, intent(out) :: color(maxnc)
@@ -345,7 +234,7 @@ c     Z-interpolation
          enddo
       endif
 
-      end subroutine phx_color_interp_old
+      end subroutine phx_color_interp
 
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c                           END of PHX_COLOR.F                          c

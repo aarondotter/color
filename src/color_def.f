@@ -24,6 +24,8 @@
       integer, parameter :: maxnc = 90
       integer :: ncol(maxct)
       character(len=12) :: filter_name(maxct,maxnc)
+      character(len=11) :: suffix(maxct)
+      double precision :: vegamag(10) !for Vega zeropoints
       logical :: colors_initialized(maxct) = .false.
 
       contains

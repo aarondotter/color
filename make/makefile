@@ -11,7 +11,7 @@ COMPILE = $(FC) $(FWARN) $(FDBG) $(FFLAGS)
 COLOR_SRC_DIR = $(COLOR_DIR)/src
 
 LIB  = libcolor.a
-LIB_OBJS = color_lib.o phx_color.o kur_color.o color_def.o toms660.o
+LIB_OBJS = color_lib.o phx_color.o kur_color.o color_def.o
 
 $(LIB): $(LIB_OBJS)
 	ar crs $(LIB) $(LIB_OBJS)
@@ -19,10 +19,7 @@ $(LIB): $(LIB_OBJS)
 color_def.o: $(COLOR_SRC_DIR)/color_def.f
 	$(COMPILE) -c $<
 
-toms660.o: $(COLOR_SRC_DIR)/toms660.f90
-	$(COMPILE) -c $<
-
-phx_color.o: $(COLOR_SRC_DIR)/phx_color.f toms660.o color_def.o
+phx_color.o: $(COLOR_SRC_DIR)/phx_color.f color_def.o
 	$(COMPILE) -c $<
 
 kur_color.o: $(COLOR_SRC_DIR)/kur_color.f color_def.o
