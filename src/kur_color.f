@@ -37,7 +37,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       kur_data_dir = trim(data_dir) // '/kur/'
 
-      z(:) = (/-4.0d0,-2.5d0,-2.0d0,-1.5d0,-1.0d0,-0.5d0,0.0d0,0.2d0,0.5d0/)
+      z = [-4.0d0,-2.5d0,-2.0d0,-1.5d0,-1.0d0,-0.5d0,0.0d0,0.2d0,0.5d0]
 
 c set [a/Fe] index parameter
       if(afe<=0.2d0) then
@@ -64,8 +64,8 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       character(len=3) :: afile(2)
       double precision :: feh0
 
-      afile(:) = (/'ap0','ap4'/)
-      zfile(:) = (/'Zm4d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d2','Zp0d5'/)
+      afile = ['ap0','ap4']
+      zfile = ['Zm4d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d2','Zp0d5']
 
       do iz=1,nz
 c set up filenames based on the input variables
@@ -160,9 +160,9 @@ c     find interpolation coeff.'s in T
          call interp(qt,ft,t,tintk)
 
          if(kur_debug)then
-            print *, 'Teff, logg, [Fe/H]=', t, gl, feh
-            print *, 'fz(:)=', fz(:)
-            print *, 'ft(:)=', ft(:)
+            write(*,*) 'Teff, logg, [Fe/H]=', t, gl, feh
+            write(*,*) 'fz(:)=', fz
+            write(*,*) 'ft(:)=', ft
          endif
 
 c     locate Log G for each T

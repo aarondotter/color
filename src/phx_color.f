@@ -38,7 +38,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       phx_data_dir = trim(data_dir) // '/phx/'
 
-      z(:) = (/-4.0d0,-3.5d0,-3.0d0,-2.5d0,-2.0d0,-1.5d0,-1.0d0,-0.5d0,0.0d0,0.5d0/)
+      z = [-4.0d0,-3.5d0,-3.0d0,-2.5d0,-2.0d0,-1.5d0,-1.0d0,-0.5d0,0.0d0,0.5d0]
 
       if(afe>0.2d0) then
          nz=9
@@ -75,8 +75,8 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       character(len=5) :: zfile(nz_max)
       character(len=3) :: afile(6)
 
-      afile = (/'am2','ap0','ap2','ap4','ap6','ap8'/)
-      zfile = (/'Zm4d0','Zm3d5','Zm3d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d5'/)
+      afile = ['am2','ap0','ap2','ap4','ap6','ap8']
+      zfile = ['Zm4d0','Zm3d5','Zm3d0','Zm2d5','Zm2d0','Zm1d5','Zm1d0','Zm0d5','Zp0d0','Zp0d5']
 
       do iz=1,nz
 c set up filenames based on the input variables
@@ -172,7 +172,7 @@ c     find interpolation coeff.'s in T
          call interp(qt,ft,t,tintp)
 
          if(phx_debug)then
-            print *, 'iz, izlo, izhi, z(iz)=', iz, izlo, izhi, z(iz)
+            write(*,*) 'iz, izlo, izhi, z(iz)=', iz, izlo, izhi, z(iz)
             write(*,'(a20,3f12.4)') 'Teff, logg, [Fe/H]=', t, gl, feh
             write(*,'(a20,1p4e12.4)') 'fz(:)=', fz
             write(*,'(a20,1p4e12.4)') 'qt(:)=', qt
